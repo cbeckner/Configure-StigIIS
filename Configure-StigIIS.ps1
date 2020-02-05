@@ -41,20 +41,53 @@ param(
 )
 
 if(!(Test-Path $ServerPath)) {
-
     New-Item -ItemType Directory $ServerPath -Force
 }
 
-Try {
-    
+Try {    
     Import-Module WebAdministration
 }
 
-Catch {
-    
+Catch {    
     Write-Host "Unable to load WebAdministration module."
     Break
 }
+
+[xml]$script:serverdata = Get-Content iis-server.ckl
+$script:serverdata.PreserveWhitespace = $true
+
+[xml]$script:sitedata = Get-Content iis-site.ckl
+$script:sitedata.PreserveWhitespace = $true
+$script:sitedata.
+
+$script:statusNAF = "NotAFinding"
+$script:statusOpen = "Open"
+$script:statusNA = "Not_Applicable"
+
+function SetServerDetails([String] $vulnId, [String] $status, [String] $findingDetails) {
+<#
+.SYNOPSIS
+    Set the finding details for a given vulnerability
+
+.DESCRIPTION
+    Set the finding details for a given vulnerability
+#>
+    $script:serverdata.SelectSingleNode("//*[text()='$vulnId']").ParentNode.ParentNode.FINDING_DETAILS = $findingDetails
+    $script:serverdata.SelectSingleNode("//*[text()='$vulnId']").ParentNode.ParentNode.STATUS = $status
+}
+
+function SetSiteDetails([String] $vulnId, [String] $status, [String] $findingDetails) {
+<#
+.SYNOPSIS
+    Set the finding details for a given vulnerability
+
+.DESCRIPTION
+    Set the finding details for a given vulnerability
+#>
+    $script:sitedata.SelectSingleNode("//*[text()='$vulnId']").ParentNode.ParentNode.FINDING_DETAILS = $findingDetails
+    $script:sitedata.SelectSingleNode("//*[text()='$vulnId']").ParentNode.ParentNode.STATUS = $status
+}
+
 
 function V-76759 {
 <#
@@ -88,7 +121,9 @@ function V-76759 {
     )
 
     Write-Host "`nConfiguring STIG Settings for $($MyInvocation.MyCommand):`n"
-
+    
+    $allKeysCompliant = $true
+    
     foreach($Key0 in $RegKeys0) {
 
         $STIGValue0 = '0'        
@@ -120,13 +155,13 @@ function V-76759 {
                 }
 
                 else {
-                
+                    $allKeysCompliant = $false
                     "No"
                 }
             }
 
             else {
-            
+                $allKeysCompliant = $false
                 "No - Incorrect Value Type"
             }
         )
@@ -175,13 +210,13 @@ function V-76759 {
                 }
 
                 else {
-                
+                    $allKeysCompliant = $false
                     "No"
                 }
             }
 
             else {
-            
+                $allKeysCompliant = $false
                 "No - Incorrect Value Type"
             }
         )
@@ -198,6 +233,12 @@ function V-76759 {
             Compliant = "$Compliant1"
         }
     }
+    if($allKeysCompliant -eq $true) {
+        SetServerDetails -vulnId "V-76759" -status $script:statusNAF -findingDetails "Required registry keys are set correctly."
+    } else {
+        SetServerDetails -vulnId "V-76759" -status $script:statusOpen -findingDetails "Required registry keys are not set correctly."
+    }
+    
 }
 
 function V-76707-76719 {
@@ -334,6 +375,14 @@ function V-76681-76783 {
             "No"
         }
     }
+
+    if($PostFields -contains "Date" -and $PostFields -contains "Time" -and $PostFields -contains "ClientIP" -and $PostFields -contains "UserName" -and $PostFields -contains "Method" -and $PostFields -contains "UriQuery" -and $PostFields -contains "HTTPstatus" -and $PostFields -contains "Referer") {
+        SetServerDetails -vulnId "V-76681" -status $script:statusNAF -findingDetails "All log fields are being captured correctly"
+        SetServerDetails -vulnId "V-76783" -status $script:statusNAF -findingDetails "All log fields are being captured correctly"        
+    } else {
+        SetServerDetails -vulnId "V-76681" -status $script:statusOpen -findingDetails "Log settings are not correct"
+        SetServerDetails -vulnId "V-76783" -status $script:statusOpen -findingDetails "Log settings are not correct"
+    }
 }
 
 function V-76683-76785 {
@@ -427,6 +476,14 @@ function V-76683-76785 {
             "No"
         }
     }
+
+    if($PostWeb -eq "Both log file and ETW Event") {
+        SetServerDetails -vulnId "V-76683" -status $script:statusNAF -findingDetails "Log settings are configured for both File and ETW events"
+        SetServerDetails -vulnId "V-76785" -status $script:statusNAF -findingDetails "Log settings are configured for both File and ETW events"        
+    } else {
+        SetServerDetails -vulnId "V-76683" -status $script:statusOpen -findingDetails "Log settings are not correct"
+        SetServerDetails -vulnId "V-76785" -status $script:statusOpen -findingDetails "Log settings are not correct"
+    }
 }
 
 function V-76685-76787 {
@@ -457,6 +514,8 @@ function V-76685-76787 {
     #Parse log files for data
     $LogTail = Get-Content -Path "$LogFilePath\$($CurrentLog.Name)" -Tail 200 -Force
 
+    $allKeysCompliant = $true
+
     foreach($Tail in $LogTail) {
 
         [PSCustomObject] @{
@@ -483,10 +542,18 @@ function V-76685-76787 {
             }
 
             else {
-                    
+                $allKeysCompliant = $false
                 "No"
             }
         }
+    }
+
+    if($allKeysCompliant -eq $true) {
+        SetServerDetails -vulnId "V-76685" -status $script:statusNAF -findingDetails "Log settings are configured correctly"
+        SetServerDetails -vulnId "V-76787" -status $script:statusNAF -findingDetails "Log settings are configured correctly"        
+    } else {
+        SetServerDetails -vulnId "V-76685" -status $script:statusOpen -findingDetails "Log settings are not correct"
+        SetServerDetails -vulnId "V-76787" -status $script:statusOpen -findingDetails "Log settings are not correct"
     }
 }
 
@@ -702,7 +769,7 @@ function V-76679-76779-76781 {
         $Compliant = @(
                 
             if($PostConfig -eq "SSL: Required | Client Certificates: Accept") {
-                    
+
                 "Yes"
             }
 
@@ -725,6 +792,16 @@ function V-76679-76779-76781 {
             PostConfigurationFlags = "$PostConfig"
             Compliant = "$Compliant"
         }  
+
+        if($Compliant -eq "Yes") {
+            SetServerDetails -vulnId "V-76679" -status $script:statusNAF -findingDetails "$PostConfig"
+            SetSiteDetails -vulnId "V-76779" -status $script:statusNAF -findingDetails "$PostConfig"
+            SetSiteDetails -vulnId "V-76781" -status $script:statusNAF -findingDetails "$PostConfig"
+        } else {
+            SetServerDetails -vulnId "V-76679" -status $script:statusOpen -findingDetails "$PostConfig"
+            SetSiteDetails -vulnId "V-76779" -status $script:statusOpen -findingDetails "$PostConfig"
+            SetSiteDetails -vulnId "V-76781" -status $script:statusOpen -findingDetails "$PostConfig"
+        }
     }
 }
 
@@ -930,6 +1007,9 @@ function V-76711-76797 {
         PostConfigurationExtenstions = $PostMimeConfig.FileExtension
         PostConfigurationCount = $PostMimeConfig.Count
     }
+
+    SetServerDetails -vulnId "V-76711" -status $script:statusNAF -findingDetails "exe, dll, com, bat, and csh have been removed."
+    SetSiteDetails -vulnId "V-76797" -status $script:statusNAF -findingDetails "exe, dll, com, bat, and csh have been removed."
 }
 
 function V-76713-76803 {
@@ -968,6 +1048,13 @@ function V-76713-76803 {
                 
             "No"
         }
+    }
+    if($RemoveFeature.Success -eq $true) {
+        SetServerDetails -vulnId "V-76713" -status $script:statusNAF -findingDetails "WebDAV has been removed / is not installed"
+        SetSiteDetails -vulnId "V-76803" -status $script:statusNAF -findingDetails "WebDAV has been removed / is not installed"
+    } else {
+        SetServerDetails -vulnId "V-76713" -status $script:statusOpen -findingDetails "WebDAV has been removed / is not installed"
+        SetSiteDetails -vulnId "V-76803" -status $script:statusOpen -findingDetails "WebDAV has been removed / is not installed"
     }
 }
 
@@ -1041,6 +1128,11 @@ function V-76717 {
                 "No: File removal incomplete"
             }
         }
+        if(!($PostFiles)) {
+            SetServerDetails -vulnId "V-76717" -status $script:statusNAF -findingDetails "Files have been removed"
+        } else {
+            SetServerDetails -vulnId "V-76717" -status $script:statusOpen -findingDetails "Files were found and could not be removed."
+        }
     }
 
     else {
@@ -1052,6 +1144,7 @@ function V-76717 {
             FilesToRemove = "No files found"
             Compliant = "Yes"
         }
+        SetServerDetails -vulnId "V-76717" -status $script:statusNAF -findingDetails "No files found"
     }
 }
 
@@ -1156,6 +1249,11 @@ function V-76731 {
             "No" 
         }
     }
+    if($PostConfigurationValidation -eq 'HMACSHA256' -and $PostConfigurationEncryption.Value -eq 'Auto') {
+        SetServerDetails -vulnId "V-76731" -status $script:statusNAF -findingDetails "Validation method is HMACSHA256 or stronger."
+    } else {
+        SetServerDetails -vulnId "V-76731" -status $script:statusOpen -findingDetails "Validation method is NOT set to HMACSHA256 or stronger."
+    }
 }
 
 function V-76733-76829 {
@@ -1227,6 +1325,12 @@ function V-76733-76829 {
             "No" 
         }
     }
+    
+    if($PostDirectoryBrowsing.Value -eq $false) {
+        SetServerDetails -vulnId "V-76733" -status $script:statusNAF -findingDetails "Directory Browsing is disabled."
+    } else {
+        SetServerDetails -vulnId "V-76733" -status $script:statusOpen -findingDetails "Directory Browsing is enabled"
+    }
 }
 
 function V-76735 {
@@ -1267,6 +1371,13 @@ function V-76735 {
         }
         
     }
+
+    if(!(Test-Path $RegPath)) {
+        SetServerDetails -vulnId "V-76735" -status $script:statusNA -findingDetails "Not Applicable: Key does not exist."
+    } else {
+        SetServerDetails -vulnId "V-76735" -status $script:statusOpen -findingDetails "Key exists.  Check the indexing service snap-in from the MMC console"
+    }
+
 }
 
 
@@ -1608,14 +1719,19 @@ function V-76771 {
         PreConfigAuthorizedUsers = $PreConfigUsers.Value
         PostConfigurationAuthorizedUsers = $PostConfigurationUsers.Value
         Compliant = if($PostConfigurationUsers.Value -eq "Administrators") {
-                    
             "Yes"
         }
 
         else {
-                    
             "No" 
         }
+    }
+
+    if($PostConfigurationUsers.Value -eq "Administrators") {
+        $value = $PostConfigurationUsers.Value
+        SetServerDetails -vulnId "V-76771" -status $script:statusNAF -findingDetails "Value is set to $value"
+    } else {
+        SetServerDetails -vulnId "V-76771" -status $script:statusOpen -findingDetails "Non Administrative users found"
     }
 }
 
@@ -3171,7 +3287,6 @@ function V-76881 {
             PreConfigProtectionInterval = [Int]([TimeSpan]$PreConfigProtectionInterval).TotalMinutes
             PostConfigProtectionInterval = [Int]([TimeSpan]$PostConfigProtectionInterval).TotalMinutes
             Compliant = if([Int]([TimeSpan]$PostConfigProtectionInterval).TotalMinutes -le 5) {
-
                 "Yes"
             }
 
@@ -3294,3 +3409,5 @@ V-76881
 V-76883
 
 Stop-Transcript
+$script:serverdata.Save("$ServerPath\IIS-Server.ckl")
+$script:serverdata.Save("$ServerPath\IIS-Site.ckl")
